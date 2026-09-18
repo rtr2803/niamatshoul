@@ -76,7 +76,7 @@ export const dashboardService = {
 
   async getPopulationChart(days: number = 30) {
     try {
-      const { data } = await supabase.from('poultry_houses').select('name, capacity');
+      const { data } = await supabase.from('poultry_houses').select('id, name, capacity');
       const { data: lots } = await supabase.from('animal_lots').select('poultry_house_id, current_quantity').eq('status', 'active');
       
       return (data || []).map((h: any) => {

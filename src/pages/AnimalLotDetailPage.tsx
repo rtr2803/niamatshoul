@@ -50,7 +50,7 @@ export default function AnimalLotDetailPage() {
         .from('animal_lot_events')
         .select('*')
         .eq('lot_id', id)
-        .order('event_date', { ascending: false });
+        .order('date', { ascending: false });
 
       if (eventsError) throw eventsError;
       setEvents(eventsData || []);
@@ -211,15 +211,20 @@ export default function AnimalLotDetailPage() {
                   <div className="flex items-center">
                     {getEventBadge(event.event_type)}
                     <p className="ml-3 text-sm font-medium text-gray-900">
-                      {new Date(event.event_date).toLocaleDateString('fr-FR')}
+                      {new Date(event.date || event.event_date).toLocaleDateString('fr-FR')}
                     </p>
                   </div>
                   <div className="ml-2 flex-shrink-0 flex">
-                    <p className={`px-2 inline-flex text-sm leading-5 font-semibold rounded-full ${
-                      event.quantity_change < 0 ? 'text-red-800' : 'text-green-800'
-                    }`}>
-                      {event.quantity_change > 0 ? '+' : ''}{event.quantity_change}
-                    </p>
+                    {(() => {
+                      const qty = event.quantity ?? event.quantity_change ?? 0;
+                      return (
+                        <p className={`px-2 inline-flex text-sm leading-5 font-semibold rounded-full ${
+                          qty < 0 ? 'text-red-800 bg-red-100' : 'text-green-800 bg-green-100'
+                        }`}>
+                          {qty > 0 ? '+' : ''}{qty}
+                        </p>
+                      );
+                    })()}
                   </div>
                 </div>
                 <div className="mt-2 sm:flex sm:justify-between">

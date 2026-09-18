@@ -49,8 +49,15 @@ export default function DailyEntryPage() {
 
   const fetchFeedProducts = async () => {
     try {
-      const { data } = await supabase.from('inventory_products').select('*').eq('category', 'FEED').order('name');
-      if (data) setFeedProducts(data as InventoryProduct[]);
+      const { data, error } = await supabase
+        .from('inventory_products')
+        .select('*, category:inventory_categories(name)')
+        .order('name');
+      if (error) throw error;
+      if (data && data.length > 0) {
+        setFeedProducts(data as InventoryProduct[]);
+        setFeedProductId(prev => prev || data[0].id);
+      }
     } catch (err) {
       console.error('Error fetching feed products:', err);
     }

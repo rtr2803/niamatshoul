@@ -22,20 +22,32 @@ export default function AnimalsPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [filterStatus, setFilterStatus] = useState('ALL');
   const [filterType, setFilterType] = useState('ALL');
+  const [searchQuery, setSearchQuery] = useState('');
 
   // Form state
   const [formData, setFormData] = useState({
     lot_number: `LOT-${Date.now().toString().slice(-6)}`,
     animal_type_id: '',
     breed_id: '',
-    sex: 'MIXED',
+    sex: 'mixed', // strictly lowercase for PostgreSQL constraint
     birth_date: '',
-    origin: '',
-    initial_quantity: 0,
+    origin: 'Élevage propre',
+    initial_quantity: 100,
     poultry_house_id: '',
     acquisition_date: new Date().toISOString().split('T')[0],
     notes: ''
   });
+
+  // Inline custom breed state
+  const [showNewBreedInput, setShowNewBreedInput] = useState(false);
+  const [newBreedName, setNewBreedName] = useState('');
+  const [isCreatingBreed, setIsCreatingBreed] = useState(false);
+
+  // Inline quick house creation state
+  const [showQuickHouse, setShowQuickHouse] = useState(false);
+  const [quickHouseName, setQuickHouseName] = useState('');
+  const [quickHouseCapacity, setQuickHouseCapacity] = useState(250);
+  const [isCreatingHouse, setIsCreatingHouse] = useState(false);
 
   const [animalTypes, setAnimalTypes] = useState<any[]>([]);
   const [breeds, setBreeds] = useState<any[]>([]);
@@ -49,14 +61,30 @@ export default function AnimalsPage() {
   const fetchMetadata = async () => {
     try {
       const [typesRes, breedsRes, housesRes] = await Promise.all([
-        supabase.from('animal_types').select('*'),
-        supabase.from('animal_breeds').select('*'),
-        supabase.from('poultry_houses').select('*')
+        supabase.from('animal_types').select('*').order('name'),
+        supabase.from('animal_breeds').select('*').order('name'),
+        supabase.from('poultry_houses').select('*').order('name')
       ]);
 
-      if (typesRes.data) setAnimalTypes(typesRes.data);
-      if (breedsRes.data) setBreeds(breedsRes.data);
-      if (housesRes.data) setHouses(housesRes.data);
+      if (typesRes.data && typesRes.data.length > 0) {
+        setAnimalTypes(typesRes.data);
+        setFormData(prev => ({
+          ...prev,
+          animal_type_id: prev.animal_type_id || typesRes.data[0].id
+        }));
+      }
+
+      if (breedsRes.data) {
+        setBreeds(breedsRes.data);
+      }
+
+      if (housesRes.data && housesRes.data.length > 0) {
+        setHouses(housesRes.data);
+        setFormData(prev => ({
+          ...prev,
+          poultry_house_id: prev.poultry_house_id || housesRes.data[0].id
+        }));
+      }
     } catch (err) {
       console.error('Error fetching metadata:', err);
     }
@@ -85,37 +113,142 @@ export default function AnimalsPage() {
     }
   };
 
+  const handleAddNewBreed = async () => {
+    if (!newBreedName.trim()) return;
+    try {
+      setIsCreatingBreed(true);
+      const targetTypeId = formData.animal_type_id || (animalTypes[0]?.id ?? 'c0000000-0000-0000-0000-000000000001');
+      const { data, error } = await supabase
+        .from('animal_breeds')
+        .insert([{
+          name: newBreedName.trim(),
+          animal_type_id: targetTypeId,
+          is_active: true
+        }])
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      setBreeds(prev => [...prev, data]);
+      setFormData(prev => ({
+        ...prev,
+        animal_type_id: targetTypeId,
+        breed_id: data.id
+      }));
+      setNewBreedName('');
+      setShowNewBreedInput(false);
+    } catch (err: any) {
+      setError(err.message || 'Erreur lors de l\'ajout de la race.');
+    } finally {
+      setIsCreatingBreed(false);
+    }
+  };
+
+  const handleQuickCreateHouse = async () => {
+    if (!quickHouseName.trim()) return;
+    try {
+      setIsCreatingHouse(true);
+      const code = `P${houses.length + 1}`;
+      const { data, error } = await supabase
+        .from('poultry_houses')
+        .insert([{
+          name: quickHouseName.trim(),
+          code,
+          capacity: Number(quickHouseCapacity) || 250,
+          house_type: 'standard',
+          status: 'active',
+          is_active: true
+        }])
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      setHouses(prev => [...prev, data]);
+      setFormData(prev => ({ ...prev, poultry_house_id: data.id }));
+      setQuickHouseName('');
+      setShowQuickHouse(false);
+    } catch (err: any) {
+      setError(err.message || 'Erreur lors de la création du poulailler.');
+    } finally {
+      setIsCreatingHouse(false);
+    }
+  };
+
   const handleCreateLot = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
       setError(null);
-      
-      const { error } = await supabase
+
+      // Auto-create custom breed if typed
+      let finalBreedId = formData.breed_id || null;
+      if (showNewBreedInput && newBreedName.trim()) {
+        const targetTypeId = formData.animal_type_id || animalTypes[0]?.id;
+        const { data: createdBreed, error: bErr } = await supabase
+          .from('animal_breeds')
+          .insert([{
+            name: newBreedName.trim(),
+            animal_type_id: targetTypeId,
+            is_active: true
+          }])
+          .select()
+          .single();
+
+        if (!bErr && createdBreed) {
+          finalBreedId = createdBreed.id;
+          setBreeds(prev => [...prev, createdBreed]);
+        }
+      }
+
+      const initialQty = Number(formData.initial_quantity) || 1;
+      const targetTypeId = formData.animal_type_id || (animalTypes[0]?.id ?? null);
+      const targetHouseId = formData.poultry_house_id || (houses[0]?.id ?? null);
+
+      const { data: newLot, error } = await supabase
         .from('animal_lots')
         .insert([{
           lot_number: formData.lot_number,
-          animal_type_id: formData.animal_type_id,
-          breed_id: formData.breed_id || null,
-          sex: formData.sex,
+          animal_type_id: targetTypeId,
+          breed_id: finalBreedId,
+          sex: formData.sex.toLowerCase(), // strictly lowercase ('male', 'female', 'mixed', 'unknown')
           birth_date: formData.birth_date || null,
-          origin: formData.origin,
-          initial_quantity: formData.initial_quantity,
-          current_quantity: formData.initial_quantity,
-          poultry_house_id: formData.poultry_house_id,
+          origin: formData.origin || 'Achat',
+          initial_quantity: initialQty,
+          current_quantity: initialQty,
+          poultry_house_id: targetHouseId,
           acquisition_date: formData.acquisition_date,
-          status: 'ACTIVE',
-          notes: formData.notes
-        }]);
+          status: 'active', // strictly lowercase ('active', 'sold', 'transferred', 'deceased', 'archived')
+          notes: formData.notes || null
+        }])
+        .select()
+        .single();
 
       if (error) throw error;
-      
+
+      // Add INITIAL_STOCK ledger event
+      if (newLot) {
+        await supabase.from('animal_lot_events').insert([{
+          lot_id: newLot.id,
+          event_type: 'INITIAL_STOCK',
+          quantity: initialQty,
+          date: formData.acquisition_date,
+          poultry_house_id: targetHouseId,
+          notes: 'Entrée initiale du lot'
+        }]);
+      }
+
       setIsModalOpen(false);
+      setShowNewBreedInput(false);
+      setShowQuickHouse(false);
       fetchLots();
+
       // Reset form with new lot number
       setFormData({
         ...formData,
         lot_number: `LOT-${Date.now().toString().slice(-6)}`,
-        initial_quantity: 0
+        initial_quantity: 100,
+        notes: ''
       });
     } catch (err: any) {
       setError(err.message || 'Erreur lors de la création du lot.');
@@ -123,12 +256,13 @@ export default function AnimalsPage() {
   };
 
   const getStatusBadge = (status: string) => {
-    switch (status) {
-      case 'ACTIVE':
+    const s = (status || '').toLowerCase();
+    switch (s) {
+      case 'active':
         return <span className="px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">Actif</span>;
-      case 'SOLD':
+      case 'sold':
         return <span className="px-2 py-1 text-xs font-semibold rounded-full bg-blue-100 text-blue-800">Vendu</span>;
-      case 'QUARANTINE':
+      case 'quarantine':
         return <span className="px-2 py-1 text-xs font-semibold rounded-full bg-yellow-100 text-yellow-800">Quarantaine</span>;
       default:
         return <span className="px-2 py-1 text-xs font-semibold rounded-full bg-gray-100 text-gray-800">{status}</span>;
@@ -136,9 +270,13 @@ export default function AnimalsPage() {
   };
 
   const filteredLots = lots.filter(lot => {
-    const matchStatus = filterStatus === 'ALL' || lot.status === filterStatus;
-    const matchType = filterType === 'ALL' || lot.animal_type_id === filterType;
-    return matchStatus && matchType;
+    const statusMatch = filterStatus === 'ALL' || (lot.status || '').toLowerCase() === filterStatus.toLowerCase();
+    const typeMatch = filterType === 'ALL' || lot.animal_type_id === filterType;
+    const searchMatch = !searchQuery.trim() || 
+      (lot.lot_number || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (lot.breed?.name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (lot.poultry_house?.name || '').toLowerCase().includes(searchQuery.toLowerCase());
+    return statusMatch && typeMatch && searchMatch;
   });
 
   return (
@@ -150,17 +288,15 @@ export default function AnimalsPage() {
             Liste de tous les lots d'animaux présents ou passés dans la ferme.
           </p>
         </div>
-        {isOwner && (
-          <div className="mt-4 sm:mt-0 sm:ml-16 sm:flex-none">
-            <button
-              onClick={() => setIsModalOpen(true)}
-              className="inline-flex items-center justify-center rounded-md border border-transparent bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 sm:w-auto"
-            >
-              <Plus className="h-4 w-4 mr-2" />
-              Nouveau Lot
-            </button>
-          </div>
-        )}
+        <div className="mt-4 sm:mt-0 sm:ml-16 sm:flex-none">
+          <button
+            onClick={() => setIsModalOpen(true)}
+            className="inline-flex items-center justify-center rounded-md border border-transparent bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 sm:w-auto"
+          >
+            <Plus className="h-4 w-4 mr-2" />
+            Nouveau Lot
+          </button>
+        </div>
       </div>
 
       <div className="mt-6 flex flex-col sm:flex-row gap-4 mb-6">
@@ -170,6 +306,8 @@ export default function AnimalsPage() {
           </div>
           <input
             type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
             className="block w-full rounded-md border-gray-300 pl-10 focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm py-2 px-3 border"
             placeholder="Rechercher un lot..."
           />
@@ -181,9 +319,9 @@ export default function AnimalsPage() {
             className="block w-full rounded-md border-gray-300 py-2 pl-3 pr-10 text-base focus:border-indigo-500 focus:outline-none focus:ring-indigo-500 sm:text-sm border"
           >
             <option value="ALL">Tous les statuts</option>
-            <option value="ACTIVE">Actif</option>
-            <option value="SOLD">Vendu</option>
-            <option value="QUARANTINE">Quarantaine</option>
+            <option value="active">Actif</option>
+            <option value="sold">Vendu</option>
+            <option value="quarantine">Quarantaine</option>
           </select>
           <select
             value={filterType}
@@ -225,17 +363,15 @@ export default function AnimalsPage() {
           <p className="mt-1 text-sm text-gray-500">
             Commencez par créer un nouveau lot pour suivre votre élevage.
           </p>
-          {isOwner && (
-            <div className="mt-6">
-              <button
-                onClick={() => setIsModalOpen(true)}
-                className="inline-flex items-center rounded-md border border-transparent bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
-              >
-                <Plus className="h-4 w-4 mr-2" />
-                Nouveau Lot
-              </button>
-            </div>
-          )}
+          <div className="mt-6">
+            <button
+              onClick={() => setIsModalOpen(true)}
+              className="inline-flex items-center rounded-md border border-transparent bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+            >
+              <Plus className="h-4 w-4 mr-2" />
+              Nouveau Lot
+            </button>
+          </div>
         </div>
       ) : (
         <div className="bg-white shadow overflow-hidden sm:rounded-md border border-gray-200">
@@ -258,10 +394,10 @@ export default function AnimalsPage() {
                     <div className="mt-2 sm:flex sm:justify-between">
                       <div className="sm:flex sm:gap-6">
                         <p className="flex items-center text-sm text-gray-500">
-                          {lot.animal_type?.name} {lot.breed ? `- ${lot.breed.name}` : ''}
+                          {lot.animal_type?.name || 'Volailles'} {lot.breed ? `- ${lot.breed.name}` : ''}
                         </p>
                         <p className="mt-2 flex items-center text-sm text-gray-500 sm:mt-0">
-                          Poulailler: {lot.poultry_house?.name}
+                          Poulailler: {lot.poultry_house?.name || '-'}
                         </p>
                       </div>
                       <div className="mt-2 flex items-center text-sm text-gray-500 sm:mt-0">
@@ -284,7 +420,7 @@ export default function AnimalsPage() {
           <div className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity"></div>
           <div className="fixed inset-0 z-10 overflow-y-auto">
             <div className="flex min-h-full items-end justify-center p-4 text-center sm:items-center sm:p-0">
-              <div className="relative transform overflow-hidden rounded-lg bg-white px-4 pb-4 pt-5 text-left shadow-xl transition-all sm:my-8 sm:w-full sm:max-w-lg sm:p-6">
+              <div className="relative transform overflow-hidden rounded-lg bg-white px-4 pb-4 pt-5 text-left shadow-xl transition-all sm:my-8 sm:w-full sm:max-w-xl sm:p-6">
                 <div>
                   <h3 className="text-lg font-medium leading-6 text-gray-900 mb-4">Nouveau Lot d'Animaux</h3>
                   <form onSubmit={handleCreateLot} className="space-y-4">
@@ -300,7 +436,7 @@ export default function AnimalsPage() {
                       />
                     </div>
 
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div>
                         <label className="block text-sm font-medium text-gray-700">Type d'animal</label>
                         <select
@@ -315,18 +451,56 @@ export default function AnimalsPage() {
                           ))}
                         </select>
                       </div>
+
                       <div>
-                        <label className="block text-sm font-medium text-gray-700">Race (Optionnel)</label>
-                        <select
-                          value={formData.breed_id}
-                          onChange={e => setFormData({...formData, breed_id: e.target.value})}
-                          className="mt-1 block w-full rounded-md border border-gray-300 py-2 px-3 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-indigo-500 sm:text-sm"
-                        >
-                          <option value="">Sélectionner...</option>
-                          {breeds.filter(b => !formData.animal_type_id || b.animal_type_id === formData.animal_type_id).map(b => (
-                            <option key={b.id} value={b.id}>{b.name}</option>
-                          ))}
-                        </select>
+                        <div className="flex justify-between items-center mb-1">
+                          <label className="block text-sm font-medium text-gray-700">Race</label>
+                          <button
+                            type="button"
+                            onClick={() => setShowNewBreedInput(!showNewBreedInput)}
+                            className="text-xs text-indigo-600 hover:text-indigo-800 font-semibold"
+                          >
+                            {showNewBreedInput ? 'Annuler' : '+ Autre race'}
+                          </button>
+                        </div>
+                        
+                        {!showNewBreedInput ? (
+                          <select
+                            value={formData.breed_id}
+                            onChange={e => {
+                              if (e.target.value === '__add_new__') {
+                                setShowNewBreedInput(true);
+                              } else {
+                                setFormData({...formData, breed_id: e.target.value});
+                              }
+                            }}
+                            className="block w-full rounded-md border border-gray-300 py-2 px-3 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-indigo-500 sm:text-sm"
+                          >
+                            <option value="">Sélectionner une race...</option>
+                            {breeds.map(b => (
+                              <option key={b.id} value={b.id}>{b.name}</option>
+                            ))}
+                            <option value="__add_new__">+ Ajouter une race personnalisée...</option>
+                          </select>
+                        ) : (
+                          <div className="flex space-x-2">
+                            <input
+                              type="text"
+                              placeholder="Nom (ex: Beldi Mix, Brahma...)"
+                              value={newBreedName}
+                              onChange={e => setNewBreedName(e.target.value)}
+                              className="block w-full rounded-md border border-gray-300 py-2 px-3 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-indigo-500 sm:text-sm"
+                            />
+                            <button
+                              type="button"
+                              onClick={handleAddNewBreed}
+                              disabled={isCreatingBreed || !newBreedName.trim()}
+                              className="px-3 py-2 bg-indigo-600 text-white rounded-md text-xs font-semibold hover:bg-indigo-700 disabled:opacity-50"
+                            >
+                              {isCreatingBreed ? '...' : 'Ajouter'}
+                            </button>
+                          </div>
+                        )}
                       </div>
                     </div>
 
@@ -339,10 +513,10 @@ export default function AnimalsPage() {
                           onChange={e => setFormData({...formData, sex: e.target.value})}
                           className="mt-1 block w-full rounded-md border border-gray-300 py-2 px-3 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-indigo-500 sm:text-sm"
                         >
-                          <option value="MIXED">Mixte</option>
-                          <option value="MALE">Mâle</option>
-                          <option value="FEMALE">Femelle</option>
-                          <option value="UNKNOWN">Inconnu</option>
+                          <option value="mixed">Mixte</option>
+                          <option value="female">Femelle</option>
+                          <option value="male">Mâle</option>
+                          <option value="unknown">Inconnu</option>
                         </select>
                       </div>
                       <div>
@@ -352,25 +526,72 @@ export default function AnimalsPage() {
                           required
                           min="1"
                           value={formData.initial_quantity}
-                          onChange={e => setFormData({...formData, initial_quantity: parseInt(e.target.value)})}
+                          onChange={e => setFormData({...formData, initial_quantity: parseInt(e.target.value) || 0})}
                           className="mt-1 block w-full rounded-md border border-gray-300 py-2 px-3 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-indigo-500 sm:text-sm"
                         />
                       </div>
                     </div>
 
                     <div>
-                      <label className="block text-sm font-medium text-gray-700">Poulailler</label>
-                      <select
-                        required
-                        value={formData.poultry_house_id}
-                        onChange={e => setFormData({...formData, poultry_house_id: e.target.value})}
-                        className="mt-1 block w-full rounded-md border border-gray-300 py-2 px-3 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-indigo-500 sm:text-sm"
-                      >
-                        <option value="">Sélectionner...</option>
-                        {houses.map(h => (
-                          <option key={h.id} value={h.id}>{h.name} (Cap: {h.capacity})</option>
-                        ))}
-                      </select>
+                      <div className="flex justify-between items-center mb-1">
+                        <label className="block text-sm font-medium text-gray-700">Poulailler</label>
+                        <button
+                          type="button"
+                          onClick={() => setShowQuickHouse(!showQuickHouse)}
+                          className="text-xs text-indigo-600 hover:text-indigo-800 font-semibold"
+                        >
+                          {showQuickHouse ? 'Annuler' : '+ Nouveau poulailler'}
+                        </button>
+                      </div>
+
+                      {!showQuickHouse ? (
+                        <select
+                          required
+                          value={formData.poultry_house_id}
+                          onChange={e => {
+                            if (e.target.value === '__add_new__') {
+                              setShowQuickHouse(true);
+                            } else {
+                              setFormData({...formData, poultry_house_id: e.target.value});
+                            }
+                          }}
+                          className="block w-full rounded-md border border-gray-300 py-2 px-3 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-indigo-500 sm:text-sm"
+                        >
+                          <option value="">Sélectionner un poulailler...</option>
+                          {houses.map(h => (
+                            <option key={h.id} value={h.id}>{h.name} (Cap: {h.capacity})</option>
+                          ))}
+                          <option value="__add_new__">+ Créer un nouveau bâtiment...</option>
+                        </select>
+                      ) : (
+                        <div className="p-3 bg-gray-50 rounded-md border border-gray-200 space-y-2">
+                          <p className="text-xs text-gray-600 font-medium">Ajouter un nouveau poulailler rapide :</p>
+                          <div className="grid grid-cols-2 gap-2">
+                            <input
+                              type="text"
+                              placeholder="Nom (ex: Poulailler 5)"
+                              value={quickHouseName}
+                              onChange={e => setQuickHouseName(e.target.value)}
+                              className="block w-full rounded-md border border-gray-300 py-1.5 px-2 text-sm"
+                            />
+                            <input
+                              type="number"
+                              placeholder="Capacité (ex: 250)"
+                              value={quickHouseCapacity}
+                              onChange={e => setQuickHouseCapacity(parseInt(e.target.value) || 250)}
+                              className="block w-full rounded-md border border-gray-300 py-1.5 px-2 text-sm"
+                            />
+                          </div>
+                          <button
+                            type="button"
+                            onClick={handleQuickCreateHouse}
+                            disabled={isCreatingHouse || !quickHouseName.trim()}
+                            className="w-full py-1.5 bg-indigo-600 text-white rounded-md text-xs font-semibold hover:bg-indigo-700 disabled:opacity-50"
+                          >
+                            {isCreatingHouse ? 'Création...' : 'Créer et sélectionner ce poulailler'}
+                          </button>
+                        </div>
+                      )}
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">
@@ -408,7 +629,7 @@ export default function AnimalsPage() {
                     <div>
                       <label className="block text-sm font-medium text-gray-700">Notes</label>
                       <textarea
-                        rows={3}
+                        rows={2}
                         value={formData.notes}
                         onChange={e => setFormData({...formData, notes: e.target.value})}
                         className="mt-1 block w-full rounded-md border border-gray-300 py-2 px-3 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-indigo-500 sm:text-sm"

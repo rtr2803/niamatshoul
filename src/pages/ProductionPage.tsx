@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { useAuthStore } from '@/stores';
 import { formatDate, formatNumber } from '@/lib/utils';
@@ -90,14 +91,13 @@ export default function ProductionPage() {
           <h1 className="text-2xl font-bold text-gray-900">Production d'Oeufs</h1>
           <p className="text-sm text-gray-500">Suivi journalier de la ponte</p>
         </div>
-        {isOwner && (
-          <button 
-            className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg flex items-center transition-colors"
-          >
-            <Plus className="w-5 h-5 mr-2" />
-            Nouvelle Saisie
-          </button>
-        )}
+        <Link 
+          to="/daily-entry"
+          className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg flex items-center transition-colors text-sm font-medium"
+        >
+          <Plus className="w-5 h-5 mr-2" />
+          Nouvelle Saisie Journalière
+        </Link>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">

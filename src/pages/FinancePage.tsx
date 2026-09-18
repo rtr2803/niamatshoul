@@ -59,13 +59,13 @@ export default function FinancePage() {
 
       const { data: dData } = await supabase
         .from('debts')
-        .select('*')
-        .eq('type', 'PAYABLE');
+        .select('*, supplier:suppliers(name)')
+        .order('date', { ascending: false });
 
       const { data: rData } = await supabase
-        .from('debts')
-        .select('*')
-        .eq('type', 'RECEIVABLE');
+        .from('receivables')
+        .select('*, customer:customers(name)')
+        .order('date', { ascending: false });
 
       setTransactions(txData || []);
       setDebts(dData || []);
@@ -78,22 +78,28 @@ export default function FinancePage() {
       const chartMap = new Map();
       
       txData?.forEach(t => {
-        if (t.date >= startOfMonth && t.date <= endOfMonth) {
-          if (t.type === 'INCOME') revMonth += t.amount;
-          if (t.type === 'EXPENSE') expMonth += t.amount;
+        const isRev = t.type === 'REVENUE' || t.type === 'INCOME';
+        const isExp = t.type === 'EXPENSE';
+        const amount = Number(t.amount) || 0;
+
+        if (t.date >= startOfMonth.substring(0, 10) && t.date <= endOfMonth.substring(0, 10)) {
+          if (isRev) revMonth += amount;
+          if (isExp) expMonth += amount;
         }
         
-        const month = t.date.substring(0, 7);
-        if (!chartMap.has(month)) {
-          chartMap.set(month, { name: month, revenues: 0, expenses: 0 });
+        const month = t.date ? t.date.substring(0, 7) : '';
+        if (month) {
+          if (!chartMap.has(month)) {
+            chartMap.set(month, { name: month, revenues: 0, expenses: 0 });
+          }
+          const mData = chartMap.get(month);
+          if (isRev) mData.revenues += amount;
+          if (isExp) mData.expenses += amount;
         }
-        const mData = chartMap.get(month);
-        if (t.type === 'INCOME') mData.revenues += t.amount;
-        if (t.type === 'EXPENSE') mData.expenses += t.amount;
       });
 
-      const tDebts = dData?.reduce((acc, d) => acc + (d.amount - d.paid_amount), 0) || 0;
-      const tRec = rData?.reduce((acc, r) => acc + (r.amount - r.paid_amount), 0) || 0;
+      const tDebts = dData?.reduce((acc, d) => acc + (Number(d.remaining_amount) || (Number(d.total_amount) - Number(d.paid_amount)) || 0), 0) || 0;
+      const tRec = rData?.reduce((acc, r) => acc + (Number(r.remaining_amount) || (Number(r.total_amount) - Number(r.paid_amount)) || 0), 0) || 0;
 
       setSummary({
         revenuesMonth: revMonth,
@@ -211,63 +217,86 @@ export default function FinancePage() {
                      )}
                    </tr>
                  </thead>
-                 <tbody className="bg-white divide-y divide-gray-200">
-                   {activeTab === 'transactions' && transactions.map(t => (
-                     <tr key={t.id}>
-                       <td className="px-6 py-4 whitespace-nowrap text-sm">{formatDate(t.date)}</td>
-                       <td className="px-6 py-4 whitespace-nowrap text-sm">{t.description}</td>
-                       <td className={`px-6 py-4 whitespace-nowrap text-sm font-medium ${t.type === 'INCOME' ? 'text-green-600' : 'text-red-600'}`}>
-                         {t.type === 'INCOME' ? '+' : '-'}{formatCurrency(t.amount)}
-                       </td>
-                     </tr>
-                   ))}
-                   {activeTab === 'expenses' && transactions.filter(t => t.type === 'EXPENSE').map(t => (
-                     <tr key={t.id}>
-                       <td className="px-6 py-4 whitespace-nowrap text-sm">{formatDate(t.date)}</td>
-                       <td className="px-6 py-4 whitespace-nowrap text-sm">{t.description}</td>
-                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-red-600">
-                         -{formatCurrency(t.amount)}
-                       </td>
-                     </tr>
-                   ))}
-                   {activeTab === 'revenues' && transactions.filter(t => t.type === 'INCOME').map(t => (
-                     <tr key={t.id}>
-                       <td className="px-6 py-4 whitespace-nowrap text-sm">{formatDate(t.date)}</td>
-                       <td className="px-6 py-4 whitespace-nowrap text-sm">{t.description}</td>
-                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-green-600">
-                         +{formatCurrency(t.amount)}
-                       </td>
-                     </tr>
-                   ))}
-                   {activeTab === 'debts' && debts.map(d => (
-                     <tr key={d.id}>
-                       <td className="px-6 py-4 whitespace-nowrap text-sm">{formatDate(d.created_at)}</td>
-                       <td className="px-6 py-4 whitespace-nowrap text-sm">Dette - {d.entity_id}</td>
-                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">{formatCurrency(d.amount)}</td>
-                       <td className="px-6 py-4 whitespace-nowrap text-sm text-green-600">{formatCurrency(d.paid_amount)}</td>
-                       <td className="px-6 py-4 whitespace-nowrap text-sm text-red-600">{formatCurrency(d.amount - d.paid_amount)}</td>
-                       <td className="px-6 py-4 whitespace-nowrap text-sm">
-                         <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${d.status === 'PAID' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
-                           {d.status}
-                         </span>
-                       </td>
-                     </tr>
-                   ))}
-                   {activeTab === 'receivables' && receivables.map(r => (
-                     <tr key={r.id}>
-                       <td className="px-6 py-4 whitespace-nowrap text-sm">{formatDate(r.created_at)}</td>
-                       <td className="px-6 py-4 whitespace-nowrap text-sm">Créance - {r.entity_id}</td>
-                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">{formatCurrency(r.amount)}</td>
-                       <td className="px-6 py-4 whitespace-nowrap text-sm text-green-600">{formatCurrency(r.paid_amount)}</td>
-                       <td className="px-6 py-4 whitespace-nowrap text-sm text-red-600">{formatCurrency(r.amount - r.paid_amount)}</td>
-                       <td className="px-6 py-4 whitespace-nowrap text-sm">
-                         <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${r.status === 'PAID' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
-                           {r.status}
-                         </span>
-                       </td>
-                     </tr>
-                   ))}
-                 </tbody>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {activeTab === 'transactions' && transactions.map(t => {
+                      const isRev = t.type === 'REVENUE' || t.type === 'INCOME';
+                      return (
+                        <tr key={t.id}>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{formatDate(t.date)}</td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{t.description}</td>
+                          <td className={`px-6 py-4 whitespace-nowrap text-sm font-semibold ${isRev ? 'text-green-600' : 'text-red-600'}`}>
+                            {isRev ? '+' : '-'}{formatCurrency(t.amount)}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                    {activeTab === 'expenses' && transactions.filter(t => t.type === 'EXPENSE').map(t => (
+                      <tr key={t.id}>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{formatDate(t.date)}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{t.description}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-red-600">
+                          -{formatCurrency(t.amount)}
+                        </td>
+                      </tr>
+                    ))}
+                    {activeTab === 'revenues' && transactions.filter(t => t.type === 'REVENUE' || t.type === 'INCOME').map(t => (
+                      <tr key={t.id}>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{formatDate(t.date)}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{t.description}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-green-600">
+                          +{formatCurrency(t.amount)}
+                        </td>
+                      </tr>
+                    ))}
+                    {activeTab === 'debts' && (debts.length === 0 ? (
+                      <tr><td colSpan={6} className="text-center py-6 text-gray-400">Aucune dette fournisseur</td></tr>
+                    ) : (
+                      debts.map(d => (
+                        <tr key={d.id}>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{formatDate(d.date || d.created_at)}</td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                            {d.supplier?.name ? `Fournisseur : ${d.supplier.name}` : (d.notes || 'Dette Fournisseur')}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-gray-900">{formatCurrency(d.total_amount || d.amount || 0)}</td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-green-600 font-medium">{formatCurrency(d.paid_amount || 0)}</td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-red-600 font-medium">
+                            {formatCurrency(d.remaining_amount ?? ((d.total_amount || d.amount || 0) - (d.paid_amount || 0)))}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm">
+                            <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                              d.status === 'paid' ? 'bg-green-100 text-green-800' : d.status === 'partial' ? 'bg-blue-100 text-blue-800' : 'bg-yellow-100 text-yellow-800'
+                            }`}>
+                              {d.status === 'paid' ? 'Payé' : d.status === 'partial' ? 'Partiel' : 'En attente'}
+                            </span>
+                          </td>
+                        </tr>
+                      ))
+                    ))}
+                    {activeTab === 'receivables' && (receivables.length === 0 ? (
+                      <tr><td colSpan={6} className="text-center py-6 text-gray-400">Aucune créance client</td></tr>
+                    ) : (
+                      receivables.map(r => (
+                        <tr key={r.id}>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{formatDate(r.date || r.created_at)}</td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                            {r.customer?.name ? `Client : ${r.customer.name}` : (r.notes || 'Créance Client')}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-gray-900">{formatCurrency(r.total_amount || r.amount || 0)}</td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-green-600 font-medium">{formatCurrency(r.paid_amount || 0)}</td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-red-600 font-medium">
+                            {formatCurrency(r.remaining_amount ?? ((r.total_amount || r.amount || 0) - (r.paid_amount || 0)))}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm">
+                            <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                              r.status === 'paid' ? 'bg-green-100 text-green-800' : r.status === 'partial' ? 'bg-blue-100 text-blue-800' : 'bg-yellow-100 text-yellow-800'
+                            }`}>
+                              {r.status === 'paid' ? 'Payé' : r.status === 'partial' ? 'Partiel' : 'En attente'}
+                            </span>
+                          </td>
+                        </tr>
+                      ))
+                    ))}
+                  </tbody>
                </table>
              </div>
           )}

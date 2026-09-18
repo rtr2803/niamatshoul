@@ -5,7 +5,7 @@ import { inventoryService } from './inventoryService';
 
 export const feedService = {
   async getFeedConsumptions(filters?: { houseId?: string, startDate?: string, endDate?: string }) {
-    let query = supabase.from('feed_consumptions').select(`
+    let query = supabase.from('feed_consumption').select(`
       *,
       poultry_house:poultry_houses(*),
       product:inventory_products(*)
@@ -22,21 +22,29 @@ export const feedService = {
 
   async createFeedConsumption(data: any) {
     const id = uuidv4();
-    const { data: consumption, error } = await supabase.from('feed_consumptions').insert([{
+    const kg = data.kg_consumed || data.quantity || 0;
+    const { data: consumption, error } = await supabase.from('feed_consumption').insert([{
       id,
-      ...data
+      date: data.date,
+      poultry_house_id: data.poultry_house_id,
+      product_id: data.product_id,
+      bags: data.bags || 0,
+      kg_consumed: kg,
+      notes: data.notes || null
     }]).select().single();
     if (error) throw new Error('Erreur création conso : ' + error.message);
 
-    // Creates inventory transaction
-    await inventoryService.createInventoryTransaction({
-      product_id: data.product_id,
-      transaction_type: 'CONSUMPTION',
-      quantity: data.quantity,
-      unit_price: 0, // Should probably be fetched, but ignoring for now
-      date: data.date,
-      notes: `Consommation bâtiment ${data.poultry_house_id}`
-    });
+    // Creates inventory transaction for consumption (negative quantity)
+    if (data.product_id && kg > 0) {
+      await inventoryService.createInventoryTransaction({
+        product_id: data.product_id,
+        transaction_type: 'CONSUMPTION',
+        quantity: kg,
+        unit_price: 0,
+        date: data.date,
+        notes: `Consommation journalière`
+      });
+    }
 
     return consumption;
   },
@@ -60,31 +68,31 @@ export const feedService = {
   },
 
   async getDailyFeedConsumption(date: string, houseId?: string) {
-    let query = supabase.from('feed_consumptions')
-      .select('quantity')
-      .gte('date', startOfDay(new Date(date)).toISOString())
-      .lte('date', endOfDay(new Date(date)).toISOString());
+    let query = supabase.from('feed_consumption')
+      .select('kg_consumed')
+      .gte('date', startOfDay(new Date(date)).toISOString().split('T')[0])
+      .lte('date', endOfDay(new Date(date)).toISOString().split('T')[0]);
     
     if (houseId) query = query.eq('poultry_house_id', houseId);
     
     const { data, error } = await query;
     if (error) throw new Error('Erreur conso journalière : ' + error.message);
-    return data.reduce((acc, curr) => acc + (curr.quantity || 0), 0);
+    return (data || []).reduce((acc, curr) => acc + (Number(curr.kg_consumed) || 0), 0);
   },
 
   async getFeedConsumptionTrend(days: number) {
     const startDate = subDays(new Date(), days);
-    const { data, error } = await supabase.from('feed_consumptions')
-      .select('date, quantity')
-      .gte('date', startOfDay(startDate).toISOString())
+    const { data, error } = await supabase.from('feed_consumption')
+      .select('date, kg_consumed')
+      .gte('date', startOfDay(startDate).toISOString().split('T')[0])
       .order('date', { ascending: true });
     
     if (error) throw new Error('Erreur tendance conso : ' + error.message);
 
     const trend: Record<string, number> = {};
-    data.forEach(d => {
+    (data || []).forEach(d => {
       const day = format(new Date(d.date), 'yyyy-MM-dd');
-      trend[day] = (trend[day] || 0) + d.quantity;
+      trend[day] = (trend[day] || 0) + (Number(d.kg_consumed) || 0);
     });
 
     return Object.entries(trend).map(([date, total]) => ({ date, total }));

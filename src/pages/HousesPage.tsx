@@ -17,8 +17,10 @@ export default function HousesPage() {
   const [formData, setFormData] = useState({
     name: '',
     code: '',
-    capacity: 1000,
-    type: 'STANDARD',
+    capacity: 250,
+    house_type: 'standard',
+    status: 'active',
+    is_active: true,
     description: '',
     notes: ''
   });
@@ -36,10 +38,6 @@ export default function HousesPage() {
         .order('name');
 
       if (error) throw error;
-
-      // In a real app we would fetch active lots per house to compute capacity,
-      // For now we mock current_occupancy to 0 or some random data for visuals if needed.
-      // E.g., const {data: lots} = await supabase.from('animal_lots').select('poultry_house_id, current_quantity').eq('status', 'ACTIVE')
       setHouses(data || []);
     } catch (err: any) {
       setError(err.message || 'Erreur lors du chargement des poulaillers.');
@@ -52,9 +50,21 @@ export default function HousesPage() {
     e.preventDefault();
     try {
       setError(null);
+      const codeToUse = formData.code.trim() || `P${houses.length + 1}`;
+      const payload = {
+        name: formData.name.trim(),
+        code: codeToUse,
+        capacity: Number(formData.capacity) || 250,
+        house_type: formData.house_type || 'standard',
+        status: 'active',
+        is_active: true,
+        description: formData.description || null,
+        notes: formData.notes || null
+      };
+
       const { error } = await supabase
         .from('poultry_houses')
-        .insert([formData]);
+        .insert([payload]);
 
       if (error) throw error;
 
@@ -62,8 +72,10 @@ export default function HousesPage() {
       setFormData({
         name: '',
         code: '',
-        capacity: 1000,
-        type: 'STANDARD',
+        capacity: 250,
+        house_type: 'standard',
+        status: 'active',
+        is_active: true,
         description: '',
         notes: ''
       });
@@ -90,17 +102,15 @@ export default function HousesPage() {
             Gérez les bâtiments et espaces d'élevage de votre ferme.
           </p>
         </div>
-        {isOwner && (
-          <div className="mt-4 sm:mt-0 sm:ml-16 sm:flex-none">
-            <button
-              onClick={() => setIsModalOpen(true)}
-              className="inline-flex items-center justify-center rounded-md border border-transparent bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 sm:w-auto"
-            >
-              <Plus className="h-4 w-4 mr-2" />
-              Nouveau Poulailler
-            </button>
-          </div>
-        )}
+        <div className="mt-4 sm:mt-0 sm:ml-16 sm:flex-none">
+          <button
+            onClick={() => setIsModalOpen(true)}
+            className="inline-flex items-center justify-center rounded-md border border-transparent bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 sm:w-auto"
+          >
+            <Plus className="h-4 w-4 mr-2" />
+            Nouveau Poulailler
+          </button>
+        </div>
       </div>
 
       {error && (
@@ -123,6 +133,15 @@ export default function HousesPage() {
             <Home className="mx-auto h-12 w-12 text-gray-400" />
             <h3 className="mt-2 text-sm font-medium text-gray-900">Aucun poulailler</h3>
             <p className="mt-1 text-sm text-gray-500">Commencez par ajouter un bâtiment.</p>
+            <div className="mt-6">
+              <button
+                onClick={() => setIsModalOpen(true)}
+                className="inline-flex items-center rounded-md border border-transparent bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700"
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                Nouveau Poulailler
+              </button>
+            </div>
          </div>
       ) : (
         <div className="mt-6 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
