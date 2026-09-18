@@ -1,6 +1,6 @@
-const CACHE_NAME = 'ferme-management-v1';
-const STATIC_CACHE = 'ferme-static-v1';
-const API_CACHE = 'ferme-api-v1';
+const CACHE_NAME = 'ferme-management-v2';
+const STATIC_CACHE = 'ferme-static-v2';
+const API_CACHE = 'ferme-api-v2';
 
 const STATIC_ASSETS = [
   '/',
@@ -8,17 +8,12 @@ const STATIC_ASSETS = [
   '/manifest.json',
 ];
 
-// Install: cache app shell
+// Install: cache app shell & skip waiting immediately
 self.addEventListener('install', (event) => {
-  event.waitUntil(
-    caches.open(STATIC_CACHE).then((cache) => {
-      return cache.addAll(STATIC_ASSETS);
-    })
-  );
   self.skipWaiting();
 });
 
-// Activate: clean old caches
+// Activate: clean old caches and claim clients immediately
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) => {
@@ -62,23 +57,29 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Static assets: Cache-first
-  if (
-    url.pathname.match(/\.(js|css|png|jpg|jpeg|svg|ico|woff2?)$/) ||
-    url.pathname === '/' ||
-    url.pathname === '/index.html'
-  ) {
+  // Navigation requests & HTML: Network-first with cache fallback
+  if (request.mode === 'navigate' || url.pathname === '/' || url.pathname === '/index.html') {
+    event.respondWith(
+      fetch(request)
+        .then((response) => {
+          if (response.ok) {
+            const cloned = response.clone();
+            caches.open(STATIC_CACHE).then((cache) => {
+              cache.put(request, cloned);
+            });
+          }
+          return response;
+        })
+        .catch(() => caches.match('/index.html'))
+    );
+    return;
+  }
+
+  // Static hashed assets (Vite js, css, images): Cache-first
+  if (url.pathname.match(/\.(js|css|png|jpg|jpeg|svg|ico|woff2?)$/)) {
     event.respondWith(
       caches.match(request).then((cached) => {
         if (cached) {
-          // Refresh cache in background
-          fetch(request).then((response) => {
-            if (response.ok) {
-              caches.open(STATIC_CACHE).then((cache) => {
-                cache.put(request, response);
-              });
-            }
-          }).catch(() => {});
           return cached;
         }
         return fetch(request).then((response) => {
@@ -90,16 +91,6 @@ self.addEventListener('fetch', (event) => {
           }
           return response;
         });
-      })
-    );
-    return;
-  }
-
-  // Navigation requests: return cached index.html for SPA
-  if (request.mode === 'navigate') {
-    event.respondWith(
-      fetch(request).catch(() => {
-        return caches.match('/index.html');
       })
     );
     return;

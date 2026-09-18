@@ -68,10 +68,12 @@ function AppRoutes() {
     };
   }, [setOnline]);
 
-  // Register service worker
+  // Register service worker with proactive update check
   useEffect(() => {
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js').catch((err) => {
+      navigator.serviceWorker.register('/sw.js').then((reg) => {
+        reg.update();
+      }).catch((err) => {
         console.warn('SW registration failed:', err);
       });
     }

@@ -205,20 +205,29 @@ export default function AnimalsPage() {
       const targetTypeId = formData.animal_type_id || (animalTypes[0]?.id ?? null);
       const targetHouseId = formData.poultry_house_id || (houses[0]?.id ?? null);
 
+      // Defensively sanitize sex to strictly match PostgreSQL constraint
+      let cleanSex = 'mixed';
+      if (formData.sex) {
+        const s = String(formData.sex).toLowerCase().trim();
+        if (['male', 'female', 'mixed', 'unknown'].includes(s)) {
+          cleanSex = s;
+        }
+      }
+
       const { data: newLot, error } = await supabase
         .from('animal_lots')
         .insert([{
           lot_number: formData.lot_number,
           animal_type_id: targetTypeId,
           breed_id: finalBreedId,
-          sex: formData.sex.toLowerCase(), // strictly lowercase ('male', 'female', 'mixed', 'unknown')
+          sex: cleanSex,
           birth_date: formData.birth_date || null,
           origin: formData.origin || 'Achat',
           initial_quantity: initialQty,
           current_quantity: initialQty,
           poultry_house_id: targetHouseId,
           acquisition_date: formData.acquisition_date,
-          status: 'active', // strictly lowercase ('active', 'sold', 'transferred', 'deceased', 'archived')
+          status: 'active',
           notes: formData.notes || null
         }])
         .select()
