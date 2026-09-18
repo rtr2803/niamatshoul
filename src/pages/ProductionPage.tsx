@@ -26,7 +26,7 @@ interface EggProduction {
 }
 
 export default function ProductionPage() {
-  const isOwner = useAuthStore((state) => state.role === 'OWNER');
+  const isOwner = useAuthStore((state) => state.isOwner);
   
   const [productions, setProductions] = useState<EggProduction[]>([]);
   const [loading, setLoading] = useState(true);

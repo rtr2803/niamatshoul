@@ -658,22 +658,26 @@ export interface CreateRevenue {
  */
 export interface DashboardKPIs {
   totalAnimals: number;
-  animalsByHouse: { house: string; count: number; capacity: number }[];
+  animalsByHouse?: { house: string; count: number; capacity: number }[];
   eggsToday: number;
-  eggsThisWeek: number;
+  eggsThisWeek?: number;
   eggsThisMonth: number;
   mortalityToday: number;
-  mortalityRate: number;
+  mortalityRate?: number;
   feedStock: number;
-  forageStock: number;
-  feedConsumptionToday: number;
+  forageStock?: number;
+  feedConsumptionToday?: number;
   revenueThisMonth: number;
-  expensesThisMonth: number;
-  netResult: number;
-  totalDebts: number;
-  totalReceivables: number;
-  activeIncubationBatches: number;
-  alertCount: number;
+  expenseThisMonth?: number;
+  expensesThisMonth?: number;
+  netResult?: number;
+  netResultThisMonth?: number;
+  supplierDebt?: number;
+  totalDebts?: number;
+  customerCredit?: number;
+  totalReceivables?: number;
+  activeIncubationBatches?: number;
+  alertCount?: number;
 }
 
 // ==================== SYNC TYPES ====================

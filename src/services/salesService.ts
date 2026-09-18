@@ -67,7 +67,7 @@ export const salesService = {
 
     // Update lot (event)
     await animalService.createLotEvent({
-      animal_lot_id: data.animal_lot_id,
+      lot_id: data.lot_id || data.animal_lot_id,
       event_type: 'SALE',
       quantity: data.quantity,
       date: data.date,

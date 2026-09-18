@@ -95,11 +95,11 @@ export default function DashboardPage() {
         <KpiCard icon={<AlertTriangle className="text-white" />} color="bg-red-500" label="Mortalité Aujourd'hui" value={formatNumber(kpis.mortalityToday)} />
         <KpiCard icon={<Package className="text-white" />} color="bg-blue-500" label="Stock Aliment" value={`${formatNumber(kpis.feedStock)} kg`} />
         
-        <KpiCard icon={<DollarSign className="text-white" />} color="bg-green-500" label="Revenu ce Mois" value={formatCurrency(kpis.revenueThisMonth)} />
-        <KpiCard icon={<ArrowDownCircle className="text-white" />} color="bg-red-500" label="Dépenses ce Mois" value={formatCurrency(kpis.expenseThisMonth)} />
-        <KpiCard icon={<TrendingUp className="text-white" />} color="bg-primary-700" label="Résultat Net" value={formatCurrency(kpis.netResultThisMonth)} />
-        <KpiCard icon={<CreditCard className="text-white" />} color="bg-orange-500" label="Dettes Fournisseurs" value={formatCurrency(kpis.supplierDebt)} />
-        <KpiCard icon={<Users className="text-white" />} color="bg-blue-600" label="Créances Clients" value={formatCurrency(kpis.customerCredit)} />
+        <KpiCard icon={<DollarSign className="text-white" />} color="bg-green-500" label="Revenu ce Mois" value={formatCurrency(kpis.revenueThisMonth || 0)} />
+        <KpiCard icon={<ArrowDownCircle className="text-white" />} color="bg-red-500" label="Dépenses ce Mois" value={formatCurrency(kpis.expenseThisMonth || kpis.expensesThisMonth || 0)} />
+        <KpiCard icon={<TrendingUp className="text-white" />} color="bg-primary-700" label="Résultat Net" value={formatCurrency(kpis.netResultThisMonth || kpis.netResult || 0)} />
+        <KpiCard icon={<CreditCard className="text-white" />} color="bg-orange-500" label="Dettes Fournisseurs" value={formatCurrency(kpis.supplierDebt || kpis.totalDebts || 0)} />
+        <KpiCard icon={<Users className="text-white" />} color="bg-blue-600" label="Créances Clients" value={formatCurrency(kpis.customerCredit || kpis.totalReceivables || 0)} />
       </div>
 
       {/* Charts Section */}

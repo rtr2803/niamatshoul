@@ -31,8 +31,8 @@ export default function DailyEntryPage() {
 
   useEffect(() => {
     if (houseId) {
-      const house = houses.find(h => h.id === houseId);
-      setAnimalCount(house?.currentCapacity || 0); // Assuming currentCapacity or similar field tracks animals
+      const house = houses.find((h) => h.id === houseId);
+      setAnimalCount((house as any)?.current_quantity || house?.capacity || 0);
     } else {
       setAnimalCount(0);
     }

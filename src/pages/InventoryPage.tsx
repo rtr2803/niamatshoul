@@ -24,7 +24,7 @@ interface Product {
 }
 
 export default function InventoryPage() {
-  const isOwner = useAuthStore((state) => state.role === 'OWNER');
+  const isOwner = useAuthStore((state) => state.isOwner);
   
   const [activeTab, setActiveTab] = useState<'PRODUCTS' | 'TRANSACTIONS'>('PRODUCTS');
   const [products, setProducts] = useState<Product[]>([]);

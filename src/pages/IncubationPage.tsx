@@ -35,9 +35,8 @@ interface IncubationBatch {
   supplier: Supplier | null;
   incubator: Incubator | null;
 }
-
 export default function IncubationPage() {
-  const isOwner = useAuthStore((state) => state.role === 'OWNER');
+  const isOwner = useAuthStore((state) => state.isOwner);
   
   const [batches, setBatches] = useState<IncubationBatch[]>([]);
   const [loading, setLoading] = useState(true);
