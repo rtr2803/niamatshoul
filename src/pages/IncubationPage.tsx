@@ -4,7 +4,7 @@ import { useAuthStore } from '@/stores';
 import { formatDate, formatNumber } from '@/lib/utils';
 import { 
   Plus, Search, Filter, Egg, Calendar, Truck, 
-  CheckCircle, XCircle, MoreVertical, Thermometer 
+  CheckCircle, XCircle, MoreVertical, Thermometer, Edit2, X 
 } from 'lucide-react';
 
 interface Supplier {
@@ -74,6 +74,74 @@ export default function IncubationPage() {
     poultry_house_id: '',
     breed_id: ''
   });
+
+  // Incubator modal states
+  const [showIncubatorModal, setShowIncubatorModal] = useState(false);
+  const [editingIncubator, setEditingIncubator] = useState<any>(null);
+  const [incubatorForm, setIncubatorForm] = useState({
+    name: '',
+    capacity: 500,
+    status: 'active',
+    notes: ''
+  });
+  const [savingIncubator, setSavingIncubator] = useState(false);
+
+  const openNewIncubator = () => {
+    setEditingIncubator(null);
+    setIncubatorForm({
+      name: `Incubateur ${incubators.length + 1}`,
+      capacity: 500,
+      status: 'active',
+      notes: ''
+    });
+    setShowIncubatorModal(true);
+  };
+
+  const openEditIncubator = (inc: any) => {
+    setEditingIncubator(inc);
+    setIncubatorForm({
+      name: inc.name,
+      capacity: inc.capacity || 500,
+      status: inc.status || 'active',
+      notes: inc.notes || ''
+    });
+    setShowIncubatorModal(true);
+  };
+
+  const handleSaveIncubator = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!incubatorForm.name.trim() || !incubatorForm.capacity) return;
+    try {
+      setSavingIncubator(true);
+      const payload = {
+        name: incubatorForm.name.trim(),
+        capacity: parseInt(String(incubatorForm.capacity)) || 500,
+        status: incubatorForm.status,
+        notes: incubatorForm.notes.trim() || null,
+        is_active: incubatorForm.status !== 'inactive',
+        updated_at: new Date().toISOString()
+      };
+
+      if (editingIncubator) {
+        const { error } = await supabase.from('incubators').update(payload).eq('id', editingIncubator.id);
+        if (error) throw error;
+      } else {
+        const { data: created, error } = await supabase.from('incubators').insert([payload]).select().single();
+        if (error) throw error;
+        if (created) {
+          setNewBatch(prev => ({ ...prev, incubator_id: created.id }));
+        }
+      }
+
+      setShowIncubatorModal(false);
+      setEditingIncubator(null);
+      await fetchMetadata();
+    } catch (err: any) {
+      alert('Erreur enregistrement incubateur : ' + (err.message || 'Erreur'));
+    } finally {
+      setSavingIncubator(false);
+    }
+  };
 
   useEffect(() => {
     fetchBatches();
@@ -265,22 +333,77 @@ export default function IncubationPage() {
   });
 
   return (
-    <div className="p-6">
-      <div className="flex justify-between items-center mb-6">
+    <div className="p-6 space-y-6">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Incubation</h1>
-          <p className="text-sm text-gray-500">Gérez vos lots d'incubation et d'éclosion</p>
+          <h1 className="text-2xl font-bold text-gray-900">Incubation & Éclosion</h1>
+          <p className="text-sm text-gray-500">Gérez vos lots d'incubation et le parc d'incubateurs</p>
         </div>
-        <button 
-          onClick={() => setShowCreateModal(true)}
-          className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg flex items-center transition-colors shadow-sm"
-        >
-          <Plus className="w-5 h-5 mr-2" />
-          + Nouveau Lot d'Incubation
-        </button>
+        <div className="flex gap-3">
+          <button 
+            type="button"
+            onClick={openNewIncubator}
+            className="bg-orange-600 hover:bg-orange-700 text-white px-3.5 py-2 rounded-lg flex items-center transition-colors shadow-sm text-sm font-medium"
+          >
+            <Plus className="w-4 h-4 mr-1.5" />
+            + Nouvel Incubateur
+          </button>
+          <button 
+            type="button"
+            onClick={() => setShowCreateModal(true)}
+            className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg flex items-center transition-colors shadow-sm text-sm font-medium"
+          >
+            <Plus className="w-4 h-4 mr-1.5" />
+            + Nouveau Lot d'Incubation
+          </button>
+        </div>
       </div>
 
-      <div className="mb-6 flex space-x-4 border-b border-gray-200">
+      {/* Parc des Incubateurs Section */}
+      <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
+        <div className="flex justify-between items-center mb-3">
+          <div className="flex items-center space-x-2">
+            <Thermometer className="w-5 h-5 text-orange-500" />
+            <h2 className="font-semibold text-gray-900 text-sm">Parc des Incubateurs ({incubators.length})</h2>
+          </div>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+          {incubators.map((inc) => (
+            <div key={inc.id} className="p-3.5 border border-gray-200 rounded-lg bg-gray-50 flex justify-between items-center">
+              <div>
+                <p className="font-semibold text-gray-900 text-sm">{inc.name}</p>
+                <p className="text-xs text-gray-600 mt-0.5">
+                  Capacité : <strong className="text-gray-900">{inc.capacity || 0}</strong> œufs
+                </p>
+                <span className={`inline-block mt-1 px-2 py-0.2 text-[10px] font-semibold rounded-full ${
+                  inc.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
+                }`}>
+                  {inc.status === 'active' ? 'Actif' : inc.status === 'maintenance' ? 'Maintenance' : 'Inactif'}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => openEditIncubator(inc)}
+                className="flex items-center gap-1 text-xs bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 px-2.5 py-1.5 rounded-md shadow-sm font-medium"
+                title="Modifier la capacité ou le statut"
+              >
+                <Edit2 size={12} />
+                Modifier
+              </button>
+            </div>
+          ))}
+          <button
+            type="button"
+            onClick={openNewIncubator}
+            className="p-3 border-2 border-dashed border-gray-300 hover:border-orange-400 rounded-lg text-gray-500 hover:text-orange-600 flex flex-col items-center justify-center text-xs font-medium transition"
+          >
+            <Plus size={18} className="mb-1" />
+            Ajouter un incubateur
+          </button>
+        </div>
+      </div>
+
+      <div className="flex space-x-4 border-b border-gray-200">
         <button
           onClick={() => setFilter('ALL')}
           className={`py-2 px-4 border-b-2 font-medium text-sm ${filter === 'ALL' ? 'border-green-500 text-green-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
@@ -403,18 +526,42 @@ export default function IncubationPage() {
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-gray-700">Incubateur *</label>
+                <div className="flex justify-between items-center mb-1">
+                  <label className="block text-xs font-medium text-gray-700">Incubateur *</label>
+                  <button
+                    type="button"
+                    onClick={openNewIncubator}
+                    className="text-xs text-orange-600 hover:text-orange-800 font-semibold"
+                  >
+                    + Nouvel Incubateur
+                  </button>
+                </div>
                 <select
                   required
                   value={newBatch.incubator_id}
                   onChange={e => setNewBatch({...newBatch, incubator_id: e.target.value})}
                   className="mt-1 block w-full rounded-md border border-gray-300 py-2 px-3 text-sm"
                 >
-                  <option value="">Sélectionner...</option>
+                  <option value="">Sélectionner un incubateur...</option>
                   {incubators.map(inc => (
-                    <option key={inc.id} value={inc.id}>{inc.name} (Capacité: {inc.capacity})</option>
+                    <option key={inc.id} value={inc.id}>{inc.name} (Capacité: {inc.capacity} œufs)</option>
                   ))}
                 </select>
+                {newBatch.incubator_id && (() => {
+                  const selInc = incubators.find(i => i.id === newBatch.incubator_id);
+                  return selInc ? (
+                    <div className="flex justify-between items-center text-xs text-gray-500 mt-1">
+                      <span>Capacité max : <strong>{selInc.capacity}</strong> œufs</span>
+                      <button
+                        type="button"
+                        onClick={() => openEditIncubator(selInc)}
+                        className="text-indigo-600 hover:underline"
+                      >
+                        Modifier sa capacité
+                      </button>
+                    </div>
+                  ) : null;
+                })()}
               </div>
 
               <div className="grid grid-cols-2 gap-3">
@@ -588,6 +735,94 @@ export default function IncubationPage() {
                   className="px-4 py-2 bg-green-600 text-white rounded-md text-sm font-semibold hover:bg-green-700"
                 >
                   Valider l'éclosion
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Créer / Modifier Incubateur */}
+      {showIncubatorModal && (
+        <div className="fixed inset-0 z-50 bg-gray-500 bg-opacity-75 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl max-w-md w-full p-6 shadow-xl">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-bold text-gray-900">
+                {editingIncubator ? 'Modifier l\'Incubateur' : 'Nouvel Incubateur'}
+              </h3>
+              <button 
+                onClick={() => setShowIncubatorModal(false)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveIncubator} className="space-y-4">
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Nom / Identifiant *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Ex: Incubateur 1"
+                  value={incubatorForm.name}
+                  onChange={e => setIncubatorForm({...incubatorForm, name: e.target.value})}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-orange-500 focus:border-orange-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Capacité maximale (en œufs) *</label>
+                <input
+                  type="number"
+                  required
+                  min="10"
+                  step="1"
+                  placeholder="Ex: 500"
+                  value={incubatorForm.capacity}
+                  onChange={e => setIncubatorForm({...incubatorForm, capacity: parseInt(e.target.value) || 0})}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-orange-500 focus:border-orange-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Statut</label>
+                <select
+                  value={incubatorForm.status}
+                  onChange={e => setIncubatorForm({...incubatorForm, status: e.target.value})}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-orange-500 focus:border-orange-500"
+                >
+                  <option value="active">Actif</option>
+                  <option value="maintenance">Maintenance</option>
+                  <option value="inactive">Inactif</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Notes / Emplacement (optionnel)</label>
+                <input
+                  type="text"
+                  placeholder="Ex: Bâtiment incubation"
+                  value={incubatorForm.notes}
+                  onChange={e => setIncubatorForm({...incubatorForm, notes: e.target.value})}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-orange-500 focus:border-orange-500"
+                />
+              </div>
+
+              <div className="flex justify-end space-x-3 pt-3 border-t">
+                <button
+                  type="button"
+                  onClick={() => setShowIncubatorModal(false)}
+                  className="px-4 py-2 border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50"
+                >
+                  Annuler
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingIncubator}
+                  className="px-4 py-2 bg-orange-600 text-white rounded-lg text-sm font-medium hover:bg-orange-700 disabled:opacity-50"
+                >
+                  {savingIncubator ? 'Enregistrement...' : editingIncubator ? 'Sauvegarder les modifications' : 'Créer l\'incubateur'}
                 </button>
               </div>
             </form>
