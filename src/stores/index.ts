@@ -13,27 +13,36 @@ interface AuthState {
   logout: () => void;
 }
 
-export const useAuthStore = create<AuthState>()((set) => ({
-  user: null,
-  isAuthenticated: false,
-  isLoading: true,
-  isOwner: false,
-  setUser: (user) =>
-    set({
-      user,
-      isAuthenticated: !!user,
-      isOwner: user?.role === 'OWNER',
-      isLoading: false,
-    }),
-  setLoading: (isLoading) => set({ isLoading }),
-  logout: () =>
-    set({
-      user: null,
-      isAuthenticated: false,
-      isOwner: false,
-      isLoading: false,
-    }),
-}));
+export const useAuthStore = create<AuthState>()((set) => {
+  // Safety timeout: never allow isLoading to stay true indefinitely
+  if (typeof window !== 'undefined') {
+    setTimeout(() => {
+      set((state) => (state.isLoading ? { ...state, isLoading: false } : state));
+    }, 2500);
+  }
+
+  return {
+    user: null,
+    isAuthenticated: false,
+    isLoading: true,
+    isOwner: false,
+    setUser: (user) =>
+      set({
+        user,
+        isAuthenticated: !!user,
+        isOwner: user?.role === 'OWNER',
+        isLoading: false,
+      }),
+    setLoading: (isLoading) => set({ isLoading }),
+    logout: () =>
+      set({
+        user: null,
+        isAuthenticated: false,
+        isOwner: false,
+        isLoading: false,
+      }),
+  };
+});
 
 // ==================== SYNC STORE ====================
 interface SyncState {
